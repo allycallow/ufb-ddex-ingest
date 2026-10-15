@@ -1,0 +1,46 @@
+version: '2.1'
+
+orbs:
+  aws-cli: circleci/aws-cli@5.4
+  aws-ecr: circleci/aws-ecr@9.8.1
+  aws-ecs: circleci/aws-ecs@7.2.2
+
+jobs:
+  build-deploy:
+    machine:
+      image: ubuntu-2204:2024.01.1
+      docker_layer_caching: true
+    resource_class: arm.medium
+    steps:
+      - checkout
+      - aws-cli/setup:
+          role_arn: "arn:aws:iam::081077757258:role/openid-connect-circleci"
+          region: eu-west-2
+          profile_name: "OIDC-PROFILE"
+          role_session_name: "example-session"
+          session_duration: "1800"
+
+      - aws-ecr/build_and_push_image:
+          account_id: "081077757258"
+          auth:
+            - aws-cli/setup:
+                role_arn: arn:aws:iam::081077757258:role/openid-connect-circleci
+          dockerfile: Dockerfile
+          path: .
+          region: eu-west-2
+          repo: production-ufb-ddex-ingest
+          tag: "${CIRCLE_SHA1},latest"
+          platform: "linux/arm64"
+
+      - aws-ecs/update_service:
+          cluster: production-ufb
+          family: production-ddex-ingest
+          container_image_name_updates: "container=ddex-ingest,tag=${CIRCLE_SHA1}"
+          force_new_deployment: false
+          region: eu-west-2
+
+workflows:
+  deploy:
+    jobs:
+      - build-deploy:
+          context: aws

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ern:NewReleaseMessage xmlns:ern="http://ddex.net/xml/ern/15">
+  <MessageHeader>
+    <MessageId>MSG001</MessageId>
+  </MessageHeader>
+</ern:NewReleaseMessage>

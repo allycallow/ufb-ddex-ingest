@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ern:PurgeReleaseMessage xmlns:ern="http://ddex.net/xml/ern/43" AvsVersionId="1" LanguageAndScriptCode="en">
+  <MessageHeader>
+    <MessageId>MSG001</MessageId>
+    <MessageSender>
+      <PartyId>PADPIDA2013020802S</PartyId>
+    </MessageSender>
+    <MessageRecipient>
+      <PartyId>PADPIDA2013020802S</PartyId>
+    </MessageRecipient>
+    <MessageCreatedDateTime>2026-10-15T00:00:00Z</MessageCreatedDateTime>
+  </MessageHeader>
+  <PurgedRelease/>
+</ern:PurgeReleaseMessage>

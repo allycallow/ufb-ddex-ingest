@@ -1,0 +1,25 @@
+[[source]]
+url = "https://pypi.org/simple"
+verify_ssl = true
+name = "pypi"
+
+[packages]
+lxml = "*"
+sentry-sdk = "==2.64.0"
+confluent-kafka = "*"
+boto3 = "*"
+
+[dev-packages]
+flake8 = "*"
+black = "*"
+isort = "*"
+pytest = "*"
+
+[scripts]
+lint = "flake8 ."
+format = "black ."
+sort-imports = "isort ."
+test = "pytest"
+
+[requires]
+python_version = "3.12"
