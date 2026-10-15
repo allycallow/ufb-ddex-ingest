@@ -6,7 +6,9 @@ This covers **XSD validation, checksum verification, and ERN→catalog field map
 
 ## ERN → Catalog Mapping (`mapping.py`)
 
-Maps a validated manifest's `PartyList`/`ReleaseList`/`ResourceList` into the fields UFB's catalog (`ufb/backend/upfrontbeats/models/`) actually has: release title/artists/label/genre/release_date/catalog_number, and per-track title/artists/isrc/duration.
+Maps a validated manifest's `MessageHeader`/`PartyList`/`ReleaseList`/`ResourceList` into the fields UFB's catalog (`ufb/backend/upfrontbeats/models/`) actually has: release title/artists/label/genre/release_date/catalog_number/sender_dpid/label_dpid, and per-track title/artists/isrc/duration.
+
+`sender_dpid` (the delivering partner's own DPID) comes from `MessageHeader/MessageSender/PartyId` - a plain element there, since `MessageSender` uses the simpler `MessagingPartyWithoutCode` composite, not `PartyList`'s full `Party`. `label_dpid` comes from the label's own `PartyList` entry's `PartyId/DPID`, when given - `Party`'s `PartyId` is `DetailedPartyId` (ISNI/DPID/etc. sub-elements) in both of its two allowed shapes, so this works regardless of which shape a given Party used.
 
 **ERN 4.3 only** - 3.8.2's equivalent shapes differ enough to need their own pass, and aren't done yet. **Deliberately not covered**, because nothing in the Django schema models them (or it's a design decision beyond "map the field that exists"): deals/territories, parental warnings, version types, compilation flags, and true multi-disc `ResourceGroup` sequencing - track order falls back to each `SoundRecording`'s position in `ResourceList`'s document order, correct for the common single-disc case but not a real read of `ResourceGroup`.
 

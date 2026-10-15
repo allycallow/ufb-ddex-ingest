@@ -4,12 +4,25 @@
      doesn't re-run XSD validation, so this only needs to be well-formed
      XML shaped like the real elements it reads. -->
 <ern:NewReleaseMessage xmlns:ern="http://ddex.net/xml/ern/43">
+  <MessageHeader>
+    <MessageId>MSG001</MessageId>
+    <MessageSender>
+      <PartyId>PADPIDA2026101504B</PartyId>
+    </MessageSender>
+    <MessageRecipient>
+      <PartyId>PADPIDA2013020802S</PartyId>
+    </MessageRecipient>
+    <MessageCreatedDateTime>2026-10-15T00:00:00Z</MessageCreatedDateTime>
+  </MessageHeader>
   <PartyList>
     <Party>
       <PartyReference>P1</PartyReference>
       <PartyName>
         <FullName>Labelwok Records</FullName>
       </PartyName>
+      <PartyId>
+        <DPID>PADPIDA2026101599Z</DPID>
+      </PartyId>
     </Party>
   </PartyList>
   <ResourceList>

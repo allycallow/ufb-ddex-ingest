@@ -48,6 +48,13 @@ class MappedRelease:
     genre: str | None
     release_date: str | None
     catalog_number: str | None
+    # The delivering partner's own DPID (from MessageHeader/MessageSender)
+    # and the label's own DPID (from its PartyList entry, when given) -
+    # ufb/backend's DdexDeliveryController accepts and stores both
+    # (sender_dpid on DdexDelivery, label_dpid on Label) but nothing
+    # populated them until this field existed.
+    sender_dpid: str | None = None
+    label_dpid: str | None = None
     tracks: list[MappedTrack] = field(default_factory=list)
 
 
@@ -94,6 +101,30 @@ def _party_names(doc) -> dict[str, str]:
     return names
 
 
+def _party_dpids(doc) -> dict[str, str]:
+    """Maps each Party's PartyReference to its DPID, when it has one.
+
+    Party's PartyId is type DetailedPartyId (ISNI/DPID/etc sub-elements)
+    in both of its two allowed shapes (PartyId-only, or PartyName+optional
+    PartyId) - so a plain PartyId/DPID lookup works regardless of which
+    shape a given Party actually used.
+    """
+    dpids = {}
+    for party in doc.findall(".//PartyList/Party"):
+        ref = _text(party.find("PartyReference"))
+        dpid = _text(party.find("PartyId/DPID"))
+        if ref and dpid:
+            dpids[ref] = dpid
+    return dpids
+
+
+def _sender_dpid(doc) -> str | None:
+    """The delivering partner's own DPID, from MessageHeader/MessageSender -
+    a plain PartyId element here (not DetailedPartyId - MessageSender uses
+    MessagingPartyWithoutCode, a simpler composite than PartyList's Party)."""
+    return _text(doc.find(".//MessageHeader/MessageSender/PartyId"))
+
+
 def _duration_seconds(value: str | None) -> int | None:
     """Parses an xs:duration (PT[nH][nM][nS]) - the only format ERN uses
     here. Returns None on anything that doesn't match rather than raising -
@@ -122,6 +153,7 @@ def map_release(manifest_path: str) -> MappedRelease:
     """
     doc = etree.parse(manifest_path)
     party_names = _party_names(doc)
+    party_dpids = _party_dpids(doc)
 
     release_el = doc.find(".//ReleaseList/Release")
     if release_el is None:
@@ -133,6 +165,7 @@ def map_release(manifest_path: str) -> MappedRelease:
 
     label_ref = _text(release_el.find("ReleaseLabelReference"))
     label = party_names.get(label_ref) if label_ref else None
+    label_dpid = party_dpids.get(label_ref) if label_ref else None
 
     catalog_number = _text(release_el.find("ReleaseId/CatalogNumber")) or _text(
         release_el.find("ReleaseId/ICPN")
@@ -160,5 +193,7 @@ def map_release(manifest_path: str) -> MappedRelease:
         genre=_text(release_el.find("Genre/GenreText")),
         release_date=_text(release_el.find("ReleaseDate")),
         catalog_number=catalog_number,
+        sender_dpid=_sender_dpid(doc),
+        label_dpid=label_dpid,
         tracks=tracks,
     )

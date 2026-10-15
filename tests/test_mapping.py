@@ -21,6 +21,8 @@ def test_maps_release_level_fields():
     assert release.genre == "House"
     assert release.release_date == "2026-10-15"
     assert release.catalog_number == "LBL001"
+    assert release.sender_dpid == "PADPIDA2026101504B"
+    assert release.label_dpid == "PADPIDA2026101599Z"
 
 
 def test_maps_tracks_in_document_order_with_isrc_and_duration():
@@ -59,6 +61,8 @@ def test_falls_back_to_icpn_when_no_catalog_number():
     try:
         release = map_release(path)
         assert release.catalog_number == "0123456789012"
+        assert release.sender_dpid is None
+        assert release.label_dpid is None
     finally:
         os.remove(path)
 
