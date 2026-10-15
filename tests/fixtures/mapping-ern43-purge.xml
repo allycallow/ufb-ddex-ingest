@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Not a full, schema-valid PurgeReleaseMessage (MessageHeader omitted) -
+     mapping.py's map_purged_release() only reads PurgedRelease/ReleaseId,
+     so this only needs to be well-formed XML shaped like that element. -->
+<ern:PurgeReleaseMessage xmlns:ern="http://ddex.net/xml/ern/43">
+  <MessageHeader>
+    <MessageId>MSG002</MessageId>
+    <MessageSender>
+      <PartyId>PADPIDA2026101504B</PartyId>
+    </MessageSender>
+    <MessageRecipient>
+      <PartyId>PADPIDA2013020802S</PartyId>
+    </MessageRecipient>
+    <MessageCreatedDateTime>2026-10-15T00:00:00Z</MessageCreatedDateTime>
+  </MessageHeader>
+  <PurgedRelease>
+    <ReleaseId>
+      <GRid>A12425678901234125</GRid>
+    </ReleaseId>
+  </PurgedRelease>
+</ern:PurgeReleaseMessage>

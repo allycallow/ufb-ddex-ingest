@@ -41,6 +41,15 @@ class MappedTrack:
 
 
 @dataclass
+class MappedPurge:
+    # Identifies which existing Release to take down - a PurgeReleaseMessage
+    # carries only PurgedRelease/ReleaseId (GRid and/or ICPN), never a title
+    # or any other descriptive field, so there's nothing else to map here.
+    catalog_number: str | None
+    grid: str | None
+
+
+@dataclass
 class MappedRelease:
     title: str
     artists: list[str]
@@ -72,13 +81,19 @@ def is_new_release_message(manifest_path: str) -> bool:
     A PurgeReleaseMessage (takedown) has no ReleaseList at all by design -
     map_release() would raise MappingError on one, correctly, but that's a
     different situation from a NewReleaseMessage that's missing a title.
-    Callers should check this first and skip mapping entirely for anything
-    that isn't a NewReleaseMessage, rather than treating "no release found"
-    as a mapping failure. Delivery-type handling (actually acting on a
-    takedown) isn't built yet - this only tells you what you're looking at.
+    Callers should check this first and skip map_release() entirely for
+    anything that isn't a NewReleaseMessage, rather than treating "no
+    release found" as a mapping failure.
     """
     doc = etree.parse(manifest_path)
     return etree.QName(doc.getroot()).localname == "NewReleaseMessage"
+
+
+def is_purge_release_message(manifest_path: str) -> bool:
+    """True if the manifest's root element is PurgeReleaseMessage (a
+    takedown) - see map_purged_release() for what's mapped from one."""
+    doc = etree.parse(manifest_path)
+    return etree.QName(doc.getroot()).localname == "PurgeReleaseMessage"
 
 
 def _text(el) -> str | None:
@@ -209,3 +224,28 @@ def map_release(manifest_path: str) -> MappedRelease:
         sender_name=_sender_name(doc),
         tracks=tracks,
     )
+
+
+def map_purged_release(manifest_path: str) -> MappedPurge:
+    """Maps a PurgeReleaseMessage's PurgedRelease into the identifiers
+    UFB's catalog needs to find the Release to take down.
+
+    Raises MappingError if PurgedRelease has neither a GRid nor an
+    ICPN/CatalogNumber - there's then no way to identify which Release
+    this delivery is even about.
+    """
+    doc = etree.parse(manifest_path)
+
+    purged_el = doc.find(".//PurgedRelease")
+    if purged_el is None:
+        raise MappingError("No PurgedRelease found")
+
+    catalog_number = _text(purged_el.find("ReleaseId/CatalogNumber")) or _text(
+        purged_el.find("ReleaseId/ICPN")
+    )
+    grid = _text(purged_el.find("ReleaseId/GRid"))
+
+    if not catalog_number and not grid:
+        raise MappingError("PurgedRelease has no GRid or CatalogNumber/ICPN")
+
+    return MappedPurge(catalog_number=catalog_number, grid=grid)

@@ -3,6 +3,7 @@ import os
 import pytest
 
 from mapping import (MappingError, _duration_seconds, is_new_release_message,
+                     is_purge_release_message, map_purged_release,
                      map_release)
 
 FIXTURES = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fixtures")
@@ -121,3 +122,52 @@ def test_is_new_release_message_false_for_purge_release_message():
     # valid-ern-43-purge.xml is a PurgeReleaseMessage (takedown) fixture
     # shared with test_validator.py - no ReleaseList at all, by design.
     assert is_new_release_message(fixture("valid-ern-43-purge.xml")) is False
+
+
+def test_is_purge_release_message_true_for_purge_release_message():
+    assert is_purge_release_message(fixture("valid-ern-43-purge.xml")) is True
+
+
+def test_is_purge_release_message_false_for_new_release_message():
+    assert is_purge_release_message(fixture("mapping-ern43.xml")) is False
+
+
+def test_maps_purged_release_grid():
+    purge = map_purged_release(fixture("mapping-ern43-purge.xml"))
+
+    assert purge.grid == "A12425678901234125"
+    assert purge.catalog_number is None
+
+
+def test_maps_purged_release_falls_back_to_icpn_when_no_grid():
+    doc = b"""<ern:PurgeReleaseMessage xmlns:ern="http://ddex.net/xml/ern/43">
+      <PurgedRelease>
+        <ReleaseId><ICPN>0123456789012</ICPN></ReleaseId>
+      </PurgedRelease>
+    </ern:PurgeReleaseMessage>"""
+    path = os.path.join(FIXTURES, "_tmp_purge_icpn.xml")
+    with open(path, "wb") as f:
+        f.write(doc)
+    try:
+        purge = map_purged_release(path)
+        assert purge.catalog_number == "0123456789012"
+        assert purge.grid is None
+    finally:
+        os.remove(path)
+
+
+def test_raises_when_purged_release_has_no_id():
+    with pytest.raises(MappingError, match="no GRid or CatalogNumber/ICPN"):
+        map_purged_release(fixture("valid-ern-43-purge.xml"))
+
+
+def test_raises_when_no_purged_release_found():
+    doc = b'<ern:PurgeReleaseMessage xmlns:ern="http://ddex.net/xml/ern/43"/>'
+    path = os.path.join(FIXTURES, "_tmp_empty_purge.xml")
+    with open(path, "wb") as f:
+        f.write(doc)
+    try:
+        with pytest.raises(MappingError, match="No PurgedRelease found"):
+            map_purged_release(path)
+    finally:
+        os.remove(path)

@@ -10,6 +10,7 @@ from confluent_kafka import Producer
 
 from checksum import ChecksumVerificationError, verify_resources
 from mapping import (ERN_43_NAMESPACE, MappingError, is_new_release_message,
+                     is_purge_release_message, map_purged_release,
                      map_release)
 from validator import ManifestValidationError, validate_manifest
 
@@ -118,10 +119,10 @@ def emit_progress_event(delivery_key: str, status: str, **detail):
         )
 
 
-def map_release_if_possible(manifest_path: str, ern_namespace: str) -> dict | None:
-    """Maps a validated NewReleaseMessage into the fields a catalog entry
-    needs, for inclusion in this task's Kafka result - this task does not
-    call the backend itself.
+def map_delivery_if_possible(manifest_path: str, ern_namespace: str) -> dict | None:
+    """Maps a validated manifest into the fields a catalog entry needs, for
+    inclusion in this task's Kafka result - this task does not call the
+    backend itself.
 
     Mirrors how audio-processing/track-meta work: the leaf task does its
     job and reports its own result to Kafka; the actual backend write
@@ -131,27 +132,40 @@ def map_release_if_possible(manifest_path: str, ern_namespace: str) -> dict | No
     directly. That also means the backend write gets Temporal's retry
     policy for free, instead of a single bare HTTP call with no retries.
 
-    Returns None (not an error) for anything map_release() doesn't cover:
-    a PurgeReleaseMessage (takedown - nothing to create a draft release
-    from), or an ERN version other than 4.3 (mapping.py is scoped to 4.3
-    only). Both are real, documented gaps, not failures of this delivery.
+    Returns a dict tagged with "delivery_type" - "new_release" (from
+    map_release()) or "takedown" (from map_purged_release()) - so
+    DdexDeliveryController on the backend knows which one it's handling.
 
-    Raises MappingError if it IS a NewReleaseMessage but map_release()
-    can't find what it needs (e.g. no title) - that's a genuine problem
-    with this delivery's content, not a gap in what we support.
+    Returns None (not an error) for an ERN version other than 4.3
+    (mapping.py is scoped to 4.3 only) - a real, documented gap, not a
+    failure of this delivery.
+
+    Raises MappingError if the mapper for whichever message type this is
+    can't find what it needs (e.g. a NewReleaseMessage with no title, or a
+    PurgeReleaseMessage with no GRid/ICPN) - that's a genuine problem with
+    this delivery's content, not a gap in what we support.
     """
     if ern_namespace != ERN_43_NAMESPACE:
-        logger.info("Skipping release mapping: only ERN 4.3 is mapped")
+        logger.info("Skipping delivery mapping: only ERN 4.3 is mapped")
         return None
 
-    if not is_new_release_message(manifest_path):
-        logger.info(
-            "Skipping release mapping: not a NewReleaseMessage "
-            "(delivery-type handling - e.g. takedowns - isn't built yet)"
-        )
-        return None
+    if is_new_release_message(manifest_path):
+        return {
+            "delivery_type": "new_release",
+            **dataclasses.asdict(map_release(manifest_path)),
+        }
 
-    return dataclasses.asdict(map_release(manifest_path))
+    if is_purge_release_message(manifest_path):
+        return {
+            "delivery_type": "takedown",
+            **dataclasses.asdict(map_purged_release(manifest_path)),
+        }
+
+    logger.info(
+        "Skipping delivery mapping: neither a NewReleaseMessage nor a "
+        "PurgeReleaseMessage"
+    )
+    return None
 
 
 def main():
@@ -179,7 +193,7 @@ def main():
                 s3_key, "checksums_verified", resources=verified_resources
             )
 
-            mapped_release = map_release_if_possible(tmp.name, ern_namespace)
+            mapped_delivery = map_delivery_if_possible(tmp.name, ern_namespace)
     except (ManifestValidationError, ChecksumVerificationError, MappingError) as exc:
         # Not sent to Sentry - a rejected delivery is expected partner input,
         # not a bug in this task. The "rejected" EventBridge event is the
@@ -194,10 +208,17 @@ def main():
         emit_saga_result(s3_key, "failed", error=str(exc))
         raise
 
-    if mapped_release is not None:
-        emit_progress_event(s3_key, "release_mapped", title=mapped_release["title"])
+    if mapped_delivery is None:
+        emit_progress_event(s3_key, "delivery_mapping_skipped")
+    elif mapped_delivery["delivery_type"] == "new_release":
+        emit_progress_event(s3_key, "release_mapped", title=mapped_delivery["title"])
     else:
-        emit_progress_event(s3_key, "release_mapping_skipped")
+        emit_progress_event(
+            s3_key,
+            "takedown_mapped",
+            catalog_number=mapped_delivery["catalog_number"],
+            grid=mapped_delivery["grid"],
+        )
 
     emit_saga_result(
         s3_key,
@@ -205,7 +226,7 @@ def main():
         data={
             "ern_namespace": ern_namespace,
             "verified_resources": verified_resources,
-            "mapped_release": mapped_release,
+            "mapped_delivery": mapped_delivery,
         },
     )
 
