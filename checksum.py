@@ -107,6 +107,19 @@ def _default_fetch(bucket: str, key: str) -> bytes:
     return boto3.client("s3").get_object(Bucket=bucket, Key=key)["Body"].read()
 
 
+def resolve_resource_key(manifest_key: str, relative_path: str) -> str:
+    """Resolves a File/URI's relative path against the manifest's own S3
+    "directory" (its key's dirname) - the DDEX-documented convention this
+    bucket's deliveries follow (see modules/ddex-delivery in ufb-iac).
+    Shared with task.py, which uses it to resolve a track's audio file
+    into the bucket/key DdexDeliveryWorkflow needs to start encoding -
+    the same resolution verify_resources applies below, just for a
+    reference that isn't being checksum-verified here.
+    """
+    manifest_dir = posixpath.dirname(manifest_key)
+    return posixpath.normpath(posixpath.join(manifest_dir, relative_path))
+
+
 def verify_resources(
     manifest_path: str, s3_bucket: str, manifest_key: str, *, fetch=_default_fetch
 ) -> list[str]:
@@ -132,7 +145,6 @@ def verify_resources(
         logger.info("No resources with a HashSum to verify")
         return []
 
-    manifest_dir = posixpath.dirname(manifest_key)
     verified = []
     failures = []
 
@@ -144,7 +156,7 @@ def verify_resources(
             )
             continue
 
-        resource_key = posixpath.normpath(posixpath.join(manifest_dir, relative_path))
+        resource_key = resolve_resource_key(manifest_key, relative_path)
 
         try:
             data = fetch(s3_bucket, resource_key)

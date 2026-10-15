@@ -3,8 +3,13 @@ import os
 import pytest
 from lxml import etree
 
-from checksum import (ChecksumVerificationError, _hash_bytes, _resource_refs,
-                      verify_resources)
+from checksum import (
+    ChecksumVerificationError,
+    _hash_bytes,
+    _resource_refs,
+    resolve_resource_key,
+    verify_resources,
+)
 
 FIXTURES = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fixtures")
 
@@ -135,3 +140,21 @@ def test_verify_resources_skips_externally_hosted_files():
 def test_verify_resources_returns_empty_list_when_no_resources_have_hashes():
     path = os.path.join(FIXTURES, "valid-ern-43-purge.xml")
     assert verify_resources(path, "test-bucket", "x/manifest.xml") == []
+
+
+def test_resolve_resource_key_joins_relative_to_manifest_dir():
+    assert (
+        resolve_resource_key("partners/labelworx/x/manifest.xml", "resources/track.wav")
+        == "partners/labelworx/x/resources/track.wav"
+    )
+
+
+def test_resolve_resource_key_normalizes_dot_segments():
+    assert (
+        resolve_resource_key("partners/labelworx/x/manifest.xml", "./track.wav")
+        == "partners/labelworx/x/track.wav"
+    )
+
+
+def test_resolve_resource_key_with_manifest_at_bucket_root():
+    assert resolve_resource_key("manifest.xml", "track.wav") == "track.wav"

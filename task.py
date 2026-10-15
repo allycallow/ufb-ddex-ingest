@@ -8,10 +8,15 @@ import boto3
 import sentry_sdk
 from confluent_kafka import Producer
 
-from checksum import ChecksumVerificationError, verify_resources
-from mapping import (ERN_43_NAMESPACE, MappingError, is_new_release_message,
-                     is_purge_release_message, map_purged_release,
-                     map_release)
+from checksum import ChecksumVerificationError, resolve_resource_key, verify_resources
+from mapping import (
+    ERN_43_NAMESPACE,
+    MappingError,
+    is_new_release_message,
+    is_purge_release_message,
+    map_purged_release,
+    map_release,
+)
 from validator import ManifestValidationError, validate_manifest
 
 # --- LOGGING ---
@@ -168,6 +173,28 @@ def map_delivery_if_possible(manifest_path: str, ern_namespace: str) -> dict | N
     return None
 
 
+def _with_audio_locations(
+    mapped_delivery: dict, s3_bucket: str, manifest_key: str
+) -> dict:
+    """Resolves each track's audio_uri (see mapping.py:MappedTrack) into
+    the absolute bucket/key DdexDeliveryWorkflow needs to start
+    TrackIngestionSagaWorkflow on it directly from this delivery's bucket -
+    mirrors checksum.py's own resource resolution, since it's the same
+    convention. A takedown's dict has no "tracks" key at all, so this is
+    a no-op for one rather than needing its own branch.
+
+    A missing or externally-hosted (absolute URL) audio_uri is left
+    unresolved - there's nothing in this bucket to encode.
+    """
+    for track in mapped_delivery.get("tracks", []):
+        audio_uri = track.get("audio_uri")
+        if not audio_uri or "://" in audio_uri:
+            continue
+        track["audio_bucket"] = s3_bucket
+        track["audio_key"] = resolve_resource_key(manifest_key, audio_uri)
+    return mapped_delivery
+
+
 def main():
     s3_bucket = os.environ["S3_BUCKET"]
     s3_key = os.environ["S3_KEY"]
@@ -194,6 +221,10 @@ def main():
             )
 
             mapped_delivery = map_delivery_if_possible(tmp.name, ern_namespace)
+            if mapped_delivery is not None:
+                mapped_delivery = _with_audio_locations(
+                    mapped_delivery, s3_bucket, s3_key
+                )
     except (ManifestValidationError, ChecksumVerificationError, MappingError) as exc:
         # Not sent to Sentry - a rejected delivery is expected partner input,
         # not a bug in this task. The "rejected" EventBridge event is the

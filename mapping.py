@@ -38,6 +38,13 @@ class MappedTrack:
     isrc: str | None
     duration_seconds: int | None
     track_number: int
+    # The delivered audio file's File/URI, relative to the manifest's own
+    # S3 directory (same convention checksum.py's _resource_refs already
+    # resolves) - task.py turns this into an absolute bucket/key so
+    # DdexDeliveryWorkflow can start the encoding pipeline on it. None if
+    # this track carries no DeliveryFile, or an externally-hosted one
+    # (nothing in this bucket to encode).
+    audio_uri: str | None = None
 
 
 @dataclass
@@ -144,6 +151,14 @@ def _sender_dpid(doc) -> str | None:
     return _text(doc.find(".//MessageHeader/MessageSender/PartyId"))
 
 
+def _audio_uri(sr) -> str | None:
+    """The delivered audio file's own File/URI for this SoundRecording -
+    DeliveryFile is maxOccurs="unbounded" (multiple bitrate variants are
+    allowed), but like release_el/Release elsewhere in this module, only
+    the first one found is mapped."""
+    return _text(sr.find("TechnicalDetails/DeliveryFile/File/URI"))
+
+
 def _sender_name(doc) -> str | None:
     """The delivering partner's display name, from the same MessageSender -
     PartyName is optional on MessagingPartyWithoutCode (a sender may give
@@ -209,6 +224,7 @@ def map_release(manifest_path: str) -> MappedRelease:
                 isrc=_text(sr.find("SoundRecordingEdition/ResourceId/ISRC")),
                 duration_seconds=_duration_seconds(_text(sr.find("Duration"))),
                 track_number=i,
+                audio_uri=_audio_uri(sr),
             )
         )
 

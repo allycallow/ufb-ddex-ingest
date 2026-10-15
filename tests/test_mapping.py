@@ -2,9 +2,14 @@ import os
 
 import pytest
 
-from mapping import (MappingError, _duration_seconds, is_new_release_message,
-                     is_purge_release_message, map_purged_release,
-                     map_release)
+from mapping import (
+    MappingError,
+    _duration_seconds,
+    is_new_release_message,
+    is_purge_release_message,
+    map_purged_release,
+    map_release,
+)
 
 FIXTURES = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fixtures")
 
@@ -38,12 +43,14 @@ def test_maps_tracks_in_document_order_with_isrc_and_duration():
     assert first.isrc == "GBABC2601234"
     assert first.duration_seconds == 210
     assert first.track_number == 1
+    assert first.audio_uri == "resources/opening-track.wav"
 
     assert second.title == "Closing Track"
     assert second.artists == ["DJ Test", "Guest Vocalist"]
     assert second.isrc == "GBABC2601235"
     assert second.duration_seconds == 240
     assert second.track_number == 2
+    assert second.audio_uri is None
 
 
 def test_falls_back_to_icpn_when_no_catalog_number():

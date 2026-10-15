@@ -39,6 +39,13 @@
         </ResourceId>
       </SoundRecordingEdition>
       <Duration>PT3M30S</Duration>
+      <TechnicalDetails>
+        <DeliveryFile>
+          <File>
+            <URI>resources/opening-track.wav</URI>
+          </File>
+        </DeliveryFile>
+      </TechnicalDetails>
     </SoundRecording>
     <SoundRecording>
       <ResourceReference>A2</ResourceReference>

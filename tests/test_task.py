@@ -3,7 +3,7 @@ import os
 import pytest
 
 from mapping import MappingError
-from task import map_delivery_if_possible
+from task import _with_audio_locations, map_delivery_if_possible
 
 FIXTURES = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fixtures")
 
@@ -61,3 +61,36 @@ def test_raises_mapping_error_for_a_purge_release_message_missing_an_id():
     result_path = fixture("valid-ern-43-purge.xml")
     with pytest.raises(MappingError):
         map_delivery_if_possible(result_path, "http://ddex.net/xml/ern/43")
+
+
+def test_new_release_tracks_get_resolved_audio_locations():
+    result = map_delivery_if_possible(
+        fixture("mapping-ern43.xml"), "http://ddex.net/xml/ern/43"
+    )
+    result = _with_audio_locations(
+        result, "test-bucket", "partners/labelworx/x/manifest.xml"
+    )
+
+    first, second = result["tracks"]
+    assert first["audio_bucket"] == "test-bucket"
+    assert first["audio_key"] == "partners/labelworx/x/resources/opening-track.wav"
+    assert "audio_bucket" not in second
+    assert "audio_key" not in second
+
+
+def test_with_audio_locations_skips_externally_hosted_audio():
+    mapped_delivery = {
+        "delivery_type": "new_release",
+        "tracks": [{"audio_uri": "https://partner.example.com/track.wav"}],
+    }
+    result = _with_audio_locations(mapped_delivery, "test-bucket", "x/manifest.xml")
+
+    assert "audio_bucket" not in result["tracks"][0]
+    assert "audio_key" not in result["tracks"][0]
+
+
+def test_with_audio_locations_is_a_no_op_for_a_takedown():
+    mapped_delivery = {"delivery_type": "takedown", "catalog_number": "LBL001"}
+    result = _with_audio_locations(mapped_delivery, "test-bucket", "x/manifest.xml")
+
+    assert result == mapped_delivery
