@@ -55,6 +55,10 @@ class MappedRelease:
     # populated them until this field existed.
     sender_dpid: str | None = None
     label_dpid: str | None = None
+    # The delivering partner's display name, from the same MessageSender -
+    # optional per the schema, so backend falls back to the DPID as
+    # Distributor.name when a sender omits it.
+    sender_name: str | None = None
     tracks: list[MappedTrack] = field(default_factory=list)
 
 
@@ -123,6 +127,13 @@ def _sender_dpid(doc) -> str | None:
     a plain PartyId element here (not DetailedPartyId - MessageSender uses
     MessagingPartyWithoutCode, a simpler composite than PartyList's Party)."""
     return _text(doc.find(".//MessageHeader/MessageSender/PartyId"))
+
+
+def _sender_name(doc) -> str | None:
+    """The delivering partner's display name, from the same MessageSender -
+    PartyName is optional on MessagingPartyWithoutCode (a sender may give
+    only its DPID), so this is best-effort like the rest of the mapping."""
+    return _text(doc.find(".//MessageHeader/MessageSender/PartyName/FullName"))
 
 
 def _duration_seconds(value: str | None) -> int | None:
@@ -195,5 +206,6 @@ def map_release(manifest_path: str) -> MappedRelease:
         catalog_number=catalog_number,
         sender_dpid=_sender_dpid(doc),
         label_dpid=label_dpid,
+        sender_name=_sender_name(doc),
         tracks=tracks,
     )

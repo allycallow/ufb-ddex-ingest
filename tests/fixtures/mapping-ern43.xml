@@ -8,6 +8,9 @@
     <MessageId>MSG001</MessageId>
     <MessageSender>
       <PartyId>PADPIDA2026101504B</PartyId>
+      <PartyName>
+        <FullName>Labelworx</FullName>
+      </PartyName>
     </MessageSender>
     <MessageRecipient>
       <PartyId>PADPIDA2013020802S</PartyId>
