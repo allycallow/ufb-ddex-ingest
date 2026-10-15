@@ -27,6 +27,9 @@ from lxml import etree
 
 _DURATION_RE = re.compile(r"P(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+(?:\.\d+)?)S)?)?")
 
+# The only namespace map_release() understands - see the module docstring.
+ERN_43_NAMESPACE = "http://ddex.net/xml/ern/43"
+
 
 @dataclass
 class MappedTrack:
@@ -50,6 +53,21 @@ class MappedRelease:
 
 class MappingError(Exception):
     """Raised when a manifest is missing a field this mapper requires."""
+
+
+def is_new_release_message(manifest_path: str) -> bool:
+    """True if the manifest's root element is NewReleaseMessage.
+
+    A PurgeReleaseMessage (takedown) has no ReleaseList at all by design -
+    map_release() would raise MappingError on one, correctly, but that's a
+    different situation from a NewReleaseMessage that's missing a title.
+    Callers should check this first and skip mapping entirely for anything
+    that isn't a NewReleaseMessage, rather than treating "no release found"
+    as a mapping failure. Delivery-type handling (actually acting on a
+    takedown) isn't built yet - this only tells you what you're looking at.
+    """
+    doc = etree.parse(manifest_path)
+    return etree.QName(doc.getroot()).localname == "NewReleaseMessage"
 
 
 def _text(el) -> str | None:

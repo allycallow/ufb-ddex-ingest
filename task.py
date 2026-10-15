@@ -1,3 +1,4 @@
+import dataclasses
 import json
 import logging
 import os
@@ -8,6 +9,8 @@ import sentry_sdk
 from confluent_kafka import Producer
 
 from checksum import ChecksumVerificationError, verify_resources
+from mapping import (ERN_43_NAMESPACE, MappingError, is_new_release_message,
+                     map_release)
 from validator import ManifestValidationError, validate_manifest
 
 # --- LOGGING ---
@@ -49,17 +52,11 @@ def _get_kafka_producer() -> Producer:
 def emit_saga_result(
     delivery_key: str, status: str, data: dict | None = None, error: str | None = None
 ):
-    """Publish this delivery's final validation result to Kafka, mirroring
-    audio-processing's emit_saga_result.
-
-    NOTE: as of writing, nothing consumes this topic yet. ufb-temporal-worker
-    has no DDEX equivalent of track_ingestion_saga.py / kafka_trigger.py /
-    reply_listener.py - no workflow starts when a delivery lands on
-    ufb.ddex_deliveries, and nothing signals one from this topic. This is
-    wired up ready for that workflow, which is a separate piece of work. The
-    "delivery_key" field (rather than track_id) is a placeholder correlation
-    key - whatever starts the eventual workflow needs to derive the same
-    workflow ID from the same value for a signal to find it.
+    """Publish this delivery's final result to Kafka, mirroring
+    audio-processing's emit_saga_result. Consumed by ufb-temporal-worker's
+    ddex_reply_listener.py, which signals DdexDeliveryWorkflow - the
+    "delivery_key" field (rather than track_id) is the correlation key that
+    workflow's ID is derived from.
 
     Best-effort: a failure to publish is logged but never fails the task -
     same reasoning as emit_progress_event, since Kafka publish failures
@@ -121,6 +118,42 @@ def emit_progress_event(delivery_key: str, status: str, **detail):
         )
 
 
+def map_release_if_possible(manifest_path: str, ern_namespace: str) -> dict | None:
+    """Maps a validated NewReleaseMessage into the fields a catalog entry
+    needs, for inclusion in this task's Kafka result - this task does not
+    call the backend itself.
+
+    Mirrors how audio-processing/track-meta work: the leaf task does its
+    job and reports its own result to Kafka; the actual backend write
+    happens from DdexDeliveryWorkflow (via a create_catalog_entry activity
+    in ufb-temporal-worker), the same way report_audio_success/
+    report_metadata_success do for the audio pipeline - not from this task
+    directly. That also means the backend write gets Temporal's retry
+    policy for free, instead of a single bare HTTP call with no retries.
+
+    Returns None (not an error) for anything map_release() doesn't cover:
+    a PurgeReleaseMessage (takedown - nothing to create a draft release
+    from), or an ERN version other than 4.3 (mapping.py is scoped to 4.3
+    only). Both are real, documented gaps, not failures of this delivery.
+
+    Raises MappingError if it IS a NewReleaseMessage but map_release()
+    can't find what it needs (e.g. no title) - that's a genuine problem
+    with this delivery's content, not a gap in what we support.
+    """
+    if ern_namespace != ERN_43_NAMESPACE:
+        logger.info("Skipping release mapping: only ERN 4.3 is mapped")
+        return None
+
+    if not is_new_release_message(manifest_path):
+        logger.info(
+            "Skipping release mapping: not a NewReleaseMessage "
+            "(delivery-type handling - e.g. takedowns - isn't built yet)"
+        )
+        return None
+
+    return dataclasses.asdict(map_release(manifest_path))
+
+
 def main():
     s3_bucket = os.environ["S3_BUCKET"]
     s3_key = os.environ["S3_KEY"]
@@ -138,7 +171,16 @@ def main():
 
             logger.info("Verifying resource checksums")
             verified_resources = verify_resources(tmp.name, s3_bucket, s3_key)
-    except (ManifestValidationError, ChecksumVerificationError) as exc:
+
+            logger.info(
+                "Checksums verified for %d resource(s)", len(verified_resources)
+            )
+            emit_progress_event(
+                s3_key, "checksums_verified", resources=verified_resources
+            )
+
+            mapped_release = map_release_if_possible(tmp.name, ern_namespace)
+    except (ManifestValidationError, ChecksumVerificationError, MappingError) as exc:
         # Not sent to Sentry - a rejected delivery is expected partner input,
         # not a bug in this task. The "rejected" EventBridge event is the
         # signal to alert on (see the DLQ-alerting ticket).
@@ -152,12 +194,19 @@ def main():
         emit_saga_result(s3_key, "failed", error=str(exc))
         raise
 
-    logger.info("Checksums verified for %d resource(s)", len(verified_resources))
-    emit_progress_event(s3_key, "checksums_verified", resources=verified_resources)
+    if mapped_release is not None:
+        emit_progress_event(s3_key, "release_mapped", title=mapped_release["title"])
+    else:
+        emit_progress_event(s3_key, "release_mapping_skipped")
+
     emit_saga_result(
         s3_key,
         "success",
-        data={"ern_namespace": ern_namespace, "verified_resources": verified_resources},
+        data={
+            "ern_namespace": ern_namespace,
+            "verified_resources": verified_resources,
+            "mapped_release": mapped_release,
+        },
     )
 
 

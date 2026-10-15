@@ -2,7 +2,7 @@
 
 Validates DDEX ERN delivery manifests landed in S3 against the official DDEX XSD schema for their declared version, then verifies every resource file's checksum, as the first stages of the DDEX delivery pipeline (see `ufb-iac`'s `modules/ddex-delivery`).
 
-This currently covers **XSD validation and checksum verification**, plus an **ERN→catalog field mapper (`mapping.py`) that exists but isn't wired into `task.py` yet** - there's no backend endpoint for it to call. Catalog ingestion (building that endpoint and actually creating draft Release/Track/Artist/Label rows), delivery-type (new/update/takedown) handling, and acknowledgment emission are separate, not-yet-built stages of the same pipeline.
+This covers **XSD validation, checksum verification, and ERN→catalog field mapping**. This task does **not** call the backend itself - it maps the release and includes it in its Kafka result; `DdexDeliveryWorkflow` in `ufb-temporal-worker` is what actually creates the draft Release/Track/Artist/Label, via a `create_catalog_entry` activity (mirrors `report_audio_success`/`report_metadata_success` for the audio pipeline - the leaf task reports its result, the workflow owns the backend write, which gets Temporal's retry policy for free). Delivery-type (new/update/takedown) handling and acknowledgment emission are separate, not-yet-built stages of the same pipeline.
 
 ## ERN → Catalog Mapping (`mapping.py`)
 
@@ -12,14 +12,17 @@ Maps a validated manifest's `PartyList`/`ReleaseList`/`ResourceList` into the fi
 
 The label is only ever communicated as a reference into `PartyList` (`ReleaseLabelReference` → `Party/PartyReference` → `PartyName/FullName`), never as a plain string - there's no simpler path to skip.
 
+Mapping is skipped (not an error) for a `PurgeReleaseMessage` (takedown - nothing to create a draft release from) or any ERN version other than 4.3 - `task.py`'s Kafka result carries `mapped_release: null` in both cases, and `DdexDeliveryWorkflow` just doesn't create a catalog entry for that delivery.
+
 ## How It Works
 
 1. Downloads the manifest from S3 (`S3_BUCKET` / `S3_KEY`)
 2. Reads the root element's namespace to detect the declared ERN version
 3. Validates the manifest against the matching vendored XSD (`schemas/ern-43` or `schemas/ern-382`)
 4. Verifies every resource file referenced in the manifest (`checksum.py`) against its declared checksum, resolving each one relative to the manifest's own S3 "directory" — handles both ERN 4.3's `File/URI` + `HashSum/Algorithm`+`HashSumValue` shape and 3.8.2's `File/FileName`+`FilePath` + `HashSum/HashSum`+`HashSumAlgorithmType` shape (note: 3.8.2 reuses `HashSum` as both the wrapper and inner value element name)
-5. Publishes a progress event to EventBridge at each stage (`validated`, `checksums_verified`, or `rejected`/`failed`)
-6. Publishes its final result to Kafka (`success` or `failed`), for a Temporal workflow to react to
+5. Maps the manifest to catalog fields (`mapping.py`), if it's an ERN 4.3 `NewReleaseMessage`
+6. Publishes a progress event to EventBridge at each stage (`validated`, `checksums_verified`, `release_mapped`/`release_mapping_skipped`, or `rejected`/`failed`)
+7. Publishes its final result to Kafka (`success` or `failed`, with the mapped release data), for `DdexDeliveryWorkflow` to act on
 
 An unrecognized ERN namespace, malformed XML, a schema validation failure, a missing resource, or a checksum mismatch all reject the delivery with a specific error (naming every failing resource, not just the first) rather than silently continuing. A `File/URI` that's an absolute URL (points outside this delivery) is skipped rather than guessed at.
 

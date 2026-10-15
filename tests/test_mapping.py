@@ -2,7 +2,8 @@ import os
 
 import pytest
 
-from mapping import MappingError, _duration_seconds, map_release
+from mapping import (MappingError, _duration_seconds, is_new_release_message,
+                     map_release)
 
 FIXTURES = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fixtures")
 
@@ -104,3 +105,13 @@ def test_raises_when_release_has_no_title():
 )
 def test_duration_seconds_parses_iso8601(value, expected):
     assert _duration_seconds(value) == expected
+
+
+def test_is_new_release_message_true_for_new_release_message():
+    assert is_new_release_message(fixture("mapping-ern43.xml")) is True
+
+
+def test_is_new_release_message_false_for_purge_release_message():
+    # valid-ern-43-purge.xml is a PurgeReleaseMessage (takedown) fixture
+    # shared with test_validator.py - no ReleaseList at all, by design.
+    assert is_new_release_message(fixture("valid-ern-43-purge.xml")) is False
