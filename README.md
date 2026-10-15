@@ -1,18 +1,19 @@
 # UFB DDEX Ingest
 
-Validates DDEX ERN delivery manifests landed in S3 against the official DDEX XSD schema for their declared version, as the first stage of the DDEX delivery pipeline (see `ufb-iac`'s `modules/ddex-delivery`).
+Validates DDEX ERN delivery manifests landed in S3 against the official DDEX XSD schema for their declared version, then verifies every resource file's checksum, as the first stages of the DDEX delivery pipeline (see `ufb-iac`'s `modules/ddex-delivery`).
 
-This currently covers **validation only**. Checksum verification, ERN→catalog mapping, catalog ingestion, delivery-type (new/update/takedown) handling, and acknowledgment emission are separate, not-yet-built stages of the same pipeline.
+This currently covers **XSD validation and checksum verification only**. ERN→catalog mapping, catalog ingestion, delivery-type (new/update/takedown) handling, and acknowledgment emission are separate, not-yet-built stages of the same pipeline.
 
 ## How It Works
 
 1. Downloads the manifest from S3 (`S3_BUCKET` / `S3_KEY`)
 2. Reads the root element's namespace to detect the declared ERN version
 3. Validates the manifest against the matching vendored XSD (`schemas/ern-43` or `schemas/ern-382`)
-4. Publishes a progress event to EventBridge (`validated` or `rejected`/`failed`)
-5. Publishes its final result to Kafka (`success` or `failed`), for a Temporal workflow to react to
+4. Verifies every resource file referenced in the manifest (`checksum.py`) against its declared checksum, resolving each one relative to the manifest's own S3 "directory" — handles both ERN 4.3's `File/URI` + `HashSum/Algorithm`+`HashSumValue` shape and 3.8.2's `File/FileName`+`FilePath` + `HashSum/HashSum`+`HashSumAlgorithmType` shape (note: 3.8.2 reuses `HashSum` as both the wrapper and inner value element name)
+5. Publishes a progress event to EventBridge at each stage (`validated`, `checksums_verified`, or `rejected`/`failed`)
+6. Publishes its final result to Kafka (`success` or `failed`), for a Temporal workflow to react to
 
-An unrecognized ERN namespace, malformed XML, or a schema validation failure all reject the delivery with a specific error rather than silently continuing.
+An unrecognized ERN namespace, malformed XML, a schema validation failure, a missing resource, or a checksum mismatch all reject the delivery with a specific error (naming every failing resource, not just the first) rather than silently continuing. A `File/URI` that's an absolute URL (points outside this delivery) is skipped rather than guessed at.
 
 ## Vendored Schemas
 

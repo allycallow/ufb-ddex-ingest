@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Not a full, schema-valid NewReleaseMessage - checksum.py parses File/HashSum
+     structurally and doesn't re-run XSD validation, so this only needs to be
+     well-formed XML shaped like the real ERN 4.3 ResourceList location. -->
+<ResourceList>
+  <SoundRecording>
+    <TechnicalDetails>
+      <DeliveryFile>
+        <File>
+          <URI>track.wav</URI>
+          <HashSum>
+            <Algorithm>MD5</Algorithm>
+            <HashSumValue>6f5902ac237024bdd0c176cb93063dc4</HashSumValue>
+          </HashSum>
+          <FileSize>12</FileSize>
+        </File>
+      </DeliveryFile>
+    </TechnicalDetails>
+  </SoundRecording>
+</ResourceList>

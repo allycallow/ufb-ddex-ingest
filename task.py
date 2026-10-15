@@ -7,6 +7,7 @@ import boto3
 import sentry_sdk
 from confluent_kafka import Producer
 
+from checksum import ChecksumVerificationError, verify_resources
 from validator import ManifestValidationError, validate_manifest
 
 # --- LOGGING ---
@@ -131,11 +132,17 @@ def main():
         with tempfile.NamedTemporaryFile(suffix=".xml") as tmp:
             boto3.client("s3").download_file(s3_bucket, s3_key, tmp.name)
             ern_namespace = validate_manifest(tmp.name)
-    except ManifestValidationError as exc:
+
+            logger.info("Manifest validated successfully (%s)", ern_namespace)
+            emit_progress_event(s3_key, "validated", ern_namespace=ern_namespace)
+
+            logger.info("Verifying resource checksums")
+            verified_resources = verify_resources(tmp.name, s3_bucket, s3_key)
+    except (ManifestValidationError, ChecksumVerificationError) as exc:
         # Not sent to Sentry - a rejected delivery is expected partner input,
         # not a bug in this task. The "rejected" EventBridge event is the
         # signal to alert on (see the DLQ-alerting ticket).
-        logger.error("Manifest validation failed: %s", exc)
+        logger.error("Delivery rejected: %s", exc)
         emit_progress_event(s3_key, "rejected", reason=str(exc))
         emit_saga_result(s3_key, "failed", error=str(exc))
         raise
@@ -145,9 +152,13 @@ def main():
         emit_saga_result(s3_key, "failed", error=str(exc))
         raise
 
-    logger.info("Manifest validated successfully (%s)", ern_namespace)
-    emit_progress_event(s3_key, "validated", ern_namespace=ern_namespace)
-    emit_saga_result(s3_key, "success", data={"ern_namespace": ern_namespace})
+    logger.info("Checksums verified for %d resource(s)", len(verified_resources))
+    emit_progress_event(s3_key, "checksums_verified", resources=verified_resources)
+    emit_saga_result(
+        s3_key,
+        "success",
+        data={"ern_namespace": ern_namespace, "verified_resources": verified_resources},
+    )
 
 
 if __name__ == "__main__":

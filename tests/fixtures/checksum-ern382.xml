@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Not a full, schema-valid NewReleaseMessage - see checksum-ern43.xml. -->
+<ResourceList>
+  <SoundRecording>
+    <TechnicalDetails>
+      <File>
+        <FilePath>resources/</FilePath>
+        <FileName>track.wav</FileName>
+        <HashSum>
+          <HashSum>af083b2d</HashSum>
+          <HashSumAlgorithmType>CRC32</HashSumAlgorithmType>
+        </HashSum>
+      </File>
+    </TechnicalDetails>
+  </SoundRecording>
+</ResourceList>
