@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Not a full, schema-valid NewReleaseMessage (MessageHeader omitted) -
+     mapping.py parses PartyList/ReleaseList/ResourceList structurally and
+     doesn't re-run XSD validation, so this only needs to be well-formed
+     XML shaped like the real elements it reads. -->
+<ern:NewReleaseMessage xmlns:ern="http://ddex.net/xml/ern/43">
+  <PartyList>
+    <Party>
+      <PartyReference>P1</PartyReference>
+      <PartyName>
+        <FullName>Labelwok Records</FullName>
+      </PartyName>
+    </Party>
+  </PartyList>
+  <ResourceList>
+    <SoundRecording>
+      <ResourceReference>A1</ResourceReference>
+      <DisplayTitleText>Opening Track</DisplayTitleText>
+      <DisplayArtistName>DJ Test</DisplayArtistName>
+      <SoundRecordingEdition>
+        <ResourceId>
+          <ISRC>GBABC2601234</ISRC>
+        </ResourceId>
+      </SoundRecordingEdition>
+      <Duration>PT3M30S</Duration>
+    </SoundRecording>
+    <SoundRecording>
+      <ResourceReference>A2</ResourceReference>
+      <DisplayTitleText>Closing Track</DisplayTitleText>
+      <DisplayArtistName>DJ Test</DisplayArtistName>
+      <DisplayArtistName>Guest Vocalist</DisplayArtistName>
+      <SoundRecordingEdition>
+        <ResourceId>
+          <ISRC>GBABC2601235</ISRC>
+        </ResourceId>
+      </SoundRecordingEdition>
+      <Duration>PT4M0S</Duration>
+    </SoundRecording>
+  </ResourceList>
+  <ReleaseList>
+    <Release>
+      <ReleaseReference>R1</ReleaseReference>
+      <ReleaseId>
+        <CatalogNumber Namespace="Labelwok">LBL001</CatalogNumber>
+      </ReleaseId>
+      <DisplayTitleText>Test Album</DisplayTitleText>
+      <DisplayArtistName>DJ Test</DisplayArtistName>
+      <ReleaseLabelReference>P1</ReleaseLabelReference>
+      <Genre>
+        <GenreText>House</GenreText>
+      </Genre>
+      <ReleaseDate>2026-10-15</ReleaseDate>
+    </Release>
+  </ReleaseList>
+</ern:NewReleaseMessage>

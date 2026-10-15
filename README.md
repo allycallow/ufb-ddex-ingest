@@ -2,7 +2,15 @@
 
 Validates DDEX ERN delivery manifests landed in S3 against the official DDEX XSD schema for their declared version, then verifies every resource file's checksum, as the first stages of the DDEX delivery pipeline (see `ufb-iac`'s `modules/ddex-delivery`).
 
-This currently covers **XSD validation and checksum verification only**. ERN→catalog mapping, catalog ingestion, delivery-type (new/update/takedown) handling, and acknowledgment emission are separate, not-yet-built stages of the same pipeline.
+This currently covers **XSD validation and checksum verification**, plus an **ERN→catalog field mapper (`mapping.py`) that exists but isn't wired into `task.py` yet** - there's no backend endpoint for it to call. Catalog ingestion (building that endpoint and actually creating draft Release/Track/Artist/Label rows), delivery-type (new/update/takedown) handling, and acknowledgment emission are separate, not-yet-built stages of the same pipeline.
+
+## ERN → Catalog Mapping (`mapping.py`)
+
+Maps a validated manifest's `PartyList`/`ReleaseList`/`ResourceList` into the fields UFB's catalog (`ufb/backend/upfrontbeats/models/`) actually has: release title/artists/label/genre/release_date/catalog_number, and per-track title/artists/isrc/duration.
+
+**ERN 4.3 only** - 3.8.2's equivalent shapes differ enough to need their own pass, and aren't done yet. **Deliberately not covered**, because nothing in the Django schema models them (or it's a design decision beyond "map the field that exists"): deals/territories, parental warnings, version types, compilation flags, and true multi-disc `ResourceGroup` sequencing - track order falls back to each `SoundRecording`'s position in `ResourceList`'s document order, correct for the common single-disc case but not a real read of `ResourceGroup`.
+
+The label is only ever communicated as a reference into `PartyList` (`ReleaseLabelReference` → `Party/PartyReference` → `PartyName/FullName`), never as a plain string - there's no simpler path to skip.
 
 ## How It Works
 
