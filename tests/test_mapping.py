@@ -30,6 +30,7 @@ def test_maps_release_level_fields():
     assert release.sender_dpid == "PADPIDA2026101504B"
     assert release.label_dpid == "PADPIDA2026101599Z"
     assert release.sender_name == "Labelworx"
+    assert release.cover_art_uri == "resources/cover.jpg"
 
 
 def test_maps_tracks_in_document_order_with_isrc_and_duration():
@@ -73,6 +74,7 @@ def test_falls_back_to_icpn_when_no_catalog_number():
         assert release.sender_dpid is None
         assert release.label_dpid is None
         assert release.sender_name is None
+        assert release.cover_art_uri is None
     finally:
         os.remove(path)
 
@@ -176,5 +178,58 @@ def test_raises_when_no_purged_release_found():
     try:
         with pytest.raises(MappingError, match="No PurgedRelease found"):
             map_purged_release(path)
+    finally:
+        os.remove(path)
+
+
+def test_cover_art_ignores_a_linked_image_that_is_not_front_cover():
+    doc = b"""<ern:NewReleaseMessage xmlns:ern="http://ddex.net/xml/ern/43">
+      <PartyList></PartyList>
+      <ResourceList>
+        <Image>
+          <ResourceReference>A9</ResourceReference>
+          <Type>BookletFrontImage</Type>
+          <TechnicalDetails><File><URI>resources/booklet.jpg</URI></File></TechnicalDetails>
+        </Image>
+      </ResourceList>
+      <ReleaseList>
+        <Release>
+          <DisplayTitleText>No Front Cover</DisplayTitleText>
+          <ResourceGroup>
+            <LinkedReleaseResourceReference>A9</LinkedReleaseResourceReference>
+          </ResourceGroup>
+        </Release>
+      </ReleaseList>
+    </ern:NewReleaseMessage>"""
+    path = os.path.join(FIXTURES, "_tmp_no_front_cover.xml")
+    with open(path, "wb") as f:
+        f.write(doc)
+    try:
+        assert map_release(path).cover_art_uri is None
+    finally:
+        os.remove(path)
+
+
+def test_cover_art_is_none_when_release_has_no_resource_group():
+    doc = b"""<ern:NewReleaseMessage xmlns:ern="http://ddex.net/xml/ern/43">
+      <PartyList></PartyList>
+      <ResourceList>
+        <Image>
+          <ResourceReference>A9</ResourceReference>
+          <Type>FrontCoverImage</Type>
+          <TechnicalDetails><File><URI>resources/cover.jpg</URI></File></TechnicalDetails>
+        </Image>
+      </ResourceList>
+      <ReleaseList>
+        <Release>
+          <DisplayTitleText>No Resource Group</DisplayTitleText>
+        </Release>
+      </ReleaseList>
+    </ern:NewReleaseMessage>"""
+    path = os.path.join(FIXTURES, "_tmp_no_resource_group.xml")
+    with open(path, "wb") as f:
+        f.write(doc)
+    try:
+        assert map_release(path).cover_art_uri is None
     finally:
         os.remove(path)

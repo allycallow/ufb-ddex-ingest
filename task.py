@@ -2,7 +2,9 @@ import dataclasses
 import json
 import logging
 import os
+import posixpath
 import tempfile
+import uuid
 
 import boto3
 import sentry_sdk
@@ -173,18 +175,64 @@ def map_delivery_if_possible(manifest_path: str, ern_namespace: str) -> dict | N
     return None
 
 
-def _with_audio_locations(
-    mapped_delivery: dict, s3_bucket: str, manifest_key: str
+def _stage_cover_art(
+    media_bucket: str,
+    delivery_bucket: str,
+    delivery_key: str,
+    *,
+    s3_client=None,
+) -> str | None:
+    """Copies a cover art object from the (KMS-restricted) delivery
+    bucket into the media bucket CloudFront already serves from, under a
+    disposable staging key - the Release this cover art belongs to
+    doesn't exist yet at this point, so its final
+    images/artwork/<release_id>/... path isn't knowable here; the
+    backend downloads this staging object itself once that id exists
+    (see ufb/backend's ddex_deliveries.py:_set_cover_art), and this one
+    is never read again afterward.
+
+    Doing the copy here, rather than having the backend read the
+    delivery bucket directly, means only ddex-ingest (which already has
+    KMS decrypt on it for checksum verification) ever touches that
+    bucket - see ufb-iac's modules/ddex-delivery security notes for why
+    that's deliberately narrow.
+
+    Returns the staged key, or None on any failure - logged, not raised:
+    a release should still get cataloged even if its cover art hiccups.
+    """
+    _, ext = posixpath.splitext(delivery_key)
+    staging_key = f"pending-ddex-covers/{uuid.uuid4().hex}{ext}"
+    s3 = s3_client or boto3.client("s3")
+    try:
+        image_bytes = s3.get_object(Bucket=delivery_bucket, Key=delivery_key)[
+            "Body"
+        ].read()
+        s3.put_object(Bucket=media_bucket, Key=staging_key, Body=image_bytes)
+    except Exception:
+        logger.exception(
+            "Failed to stage cover art s3://%s/%s", delivery_bucket, delivery_key
+        )
+        return None
+    return staging_key
+
+
+def _with_resource_locations(
+    mapped_delivery: dict,
+    s3_bucket: str,
+    manifest_key: str,
+    media_bucket: str | None,
 ) -> dict:
     """Resolves each track's audio_uri (see mapping.py:MappedTrack) into
-    the absolute bucket/key DdexDeliveryWorkflow needs to start
-    TrackIngestionSagaWorkflow on it directly from this delivery's bucket -
-    mirrors checksum.py's own resource resolution, since it's the same
-    convention. A takedown's dict has no "tracks" key at all, so this is
-    a no-op for one rather than needing its own branch.
+    the absolute bucket/key DdexDeliveryWorkflow needs to start encoding
+    directly from this delivery's bucket - mirrors checksum.py's own
+    resource resolution, since it's the same convention. Also stages the
+    release's own cover_art_uri (see mapping.py:MappedRelease) into the
+    media bucket via _stage_cover_art, when one is configured.
 
-    A missing or externally-hosted (absolute URL) audio_uri is left
-    unresolved - there's nothing in this bucket to encode.
+    A takedown's dict has no "tracks"/"cover_art_uri" keys at all, so
+    this is a no-op for one rather than needing its own branch. A
+    missing, externally-hosted, or unstageable URI is left unresolved -
+    there's nothing to act on, or nowhere to act on it.
     """
     for track in mapped_delivery.get("tracks", []):
         audio_uri = track.get("audio_uri")
@@ -192,12 +240,24 @@ def _with_audio_locations(
             continue
         track["audio_bucket"] = s3_bucket
         track["audio_key"] = resolve_resource_key(manifest_key, audio_uri)
+
+    cover_art_uri = mapped_delivery.get("cover_art_uri")
+    if cover_art_uri and "://" not in cover_art_uri and media_bucket:
+        cover_art_key = resolve_resource_key(manifest_key, cover_art_uri)
+        staged_key = _stage_cover_art(media_bucket, s3_bucket, cover_art_key)
+        if staged_key is not None:
+            mapped_delivery["cover_art_bucket"] = media_bucket
+            mapped_delivery["cover_art_key"] = staged_key
+
     return mapped_delivery
 
 
 def main():
     s3_bucket = os.environ["S3_BUCKET"]
     s3_key = os.environ["S3_KEY"]
+    # Optional: without it, cover art is simply never staged - a release
+    # should still get cataloged even where this isn't configured.
+    media_bucket = os.environ.get("MEDIA_BUCKET")
 
     logger.info("Validating manifest s3://%s/%s", s3_bucket, s3_key)
     emit_progress_event(s3_key, "started", s3_bucket=s3_bucket)
@@ -222,8 +282,8 @@ def main():
 
             mapped_delivery = map_delivery_if_possible(tmp.name, ern_namespace)
             if mapped_delivery is not None:
-                mapped_delivery = _with_audio_locations(
-                    mapped_delivery, s3_bucket, s3_key
+                mapped_delivery = _with_resource_locations(
+                    mapped_delivery, s3_bucket, s3_key, media_bucket
                 )
     except (ManifestValidationError, ChecksumVerificationError, MappingError) as exc:
         # Not sent to Sentry - a rejected delivery is expected partner input,

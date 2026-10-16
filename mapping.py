@@ -75,6 +75,10 @@ class MappedRelease:
     # optional per the schema, so backend falls back to the DPID as
     # Distributor.name when a sender omits it.
     sender_name: str | None = None
+    # The release's front cover art File/URI, relative to the manifest's
+    # own S3 directory (same convention as MappedTrack.audio_uri) - None if
+    # this delivery links no FrontCoverImage, or an externally-hosted one.
+    cover_art_uri: str | None = None
     tracks: list[MappedTrack] = field(default_factory=list)
 
 
@@ -159,6 +163,37 @@ def _audio_uri(sr) -> str | None:
     return _text(sr.find("TechnicalDetails/DeliveryFile/File/URI"))
 
 
+def _cover_art_uri(doc, release_el) -> str | None:
+    """The release's front cover art File/URI, if this delivery includes
+    one. Unlike a track's audio file (a direct child of its own
+    SoundRecording), cover art is only ever communicated as a reference:
+    Release/ResourceGroup/LinkedReleaseResourceReference holds an Image
+    resource's own ResourceReference, and that Image (in ResourceList,
+    alongside the SoundRecordings) carries the actual File/URI. Only the
+    first ResourceGroup is read, and only an Image typed FrontCoverImage
+    is matched - a delivery can link other image types (booklets, etc.)
+    via the same mechanism, and multiple Images could theoretically share
+    this release's ResourceGroup.
+    """
+    resource_group = release_el.find("ResourceGroup")
+    if resource_group is None:
+        return None
+
+    front_covers = {
+        ref: image_el
+        for image_el in doc.findall(".//ResourceList/Image")
+        if _text(image_el.find("Type")) == "FrontCoverImage"
+        and (ref := _text(image_el.find("ResourceReference")))
+    }
+
+    for linked_ref_el in resource_group.findall("LinkedReleaseResourceReference"):
+        image_el = front_covers.get(_text(linked_ref_el))
+        if image_el is not None:
+            return _text(image_el.find("TechnicalDetails/File/URI"))
+
+    return None
+
+
 def _sender_name(doc) -> str | None:
     """The delivering partner's display name, from the same MessageSender -
     PartyName is optional on MessagingPartyWithoutCode (a sender may give
@@ -238,6 +273,7 @@ def map_release(manifest_path: str) -> MappedRelease:
         sender_dpid=_sender_dpid(doc),
         label_dpid=label_dpid,
         sender_name=_sender_name(doc),
+        cover_art_uri=_cover_art_uri(doc, release_el),
         tracks=tracks,
     )
 

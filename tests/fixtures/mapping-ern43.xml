@@ -59,6 +59,15 @@
       </SoundRecordingEdition>
       <Duration>PT4M0S</Duration>
     </SoundRecording>
+    <Image>
+      <ResourceReference>A3</ResourceReference>
+      <Type>FrontCoverImage</Type>
+      <TechnicalDetails>
+        <File>
+          <URI>resources/cover.jpg</URI>
+        </File>
+      </TechnicalDetails>
+    </Image>
   </ResourceList>
   <ReleaseList>
     <Release>
@@ -73,6 +82,9 @@
         <GenreText>House</GenreText>
       </Genre>
       <ReleaseDate>2026-10-15</ReleaseDate>
+      <ResourceGroup>
+        <LinkedReleaseResourceReference>A3</LinkedReleaseResourceReference>
+      </ResourceGroup>
     </Release>
   </ReleaseList>
 </ern:NewReleaseMessage>
