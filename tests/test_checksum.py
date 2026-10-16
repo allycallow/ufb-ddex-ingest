@@ -44,6 +44,10 @@ def test_resource_refs_skips_files_without_hashsum():
     [
         ("MD5", CONTENT_MD5),
         ("SHA256", "a948904f2f0f479b8f8197694b30184b0d2ed1c1cd2a1ec0fb85d299a192a447"),
+        # SHA-256 (hyphenated) is the actual HashSumAlgorithmType enum value
+        # in ERN 4.3's AVS schema - SHA256 above is kept for leniency, but
+        # a real delivery declares the hyphenated form.
+        ("SHA-256", "a948904f2f0f479b8f8197694b30184b0d2ed1c1cd2a1ec0fb85d299a192a447"),
         ("CRC32", CONTENT_CRC32),
         ("crc32", CONTENT_CRC32),  # case-insensitive
     ],

@@ -19,8 +19,14 @@ _HASHLIB_ALGORITHMS = {
     "MD5": "md5",
     "SHA": "sha1",
     "SHA1": "sha1",
+    "SHA224": "sha224",
+    "SHA-224": "sha224",
     "SHA256": "sha256",
+    "SHA-256": "sha256",
+    "SHA384": "sha384",
+    "SHA-384": "sha384",
     "SHA512": "sha512",
+    "SHA-512": "sha512",
 }
 
 
