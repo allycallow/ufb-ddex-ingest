@@ -1,8 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- Not a full, schema-valid NewReleaseMessage (MessageHeader omitted) -
+<!-- Not a full, schema-valid NewReleaseMessage (MessageHeader omitted,
+     ReleaseType/ReleaseLabelReference's Party shape simplified, etc) -
      mapping.py parses PartyList/ReleaseList/ResourceList structurally and
      doesn't re-run XSD validation, so this only needs to be well-formed
-     XML shaped like the real elements it reads. -->
+     XML shaped like the real elements it reads. The SoundRecording/
+     TechnicalDetails nesting is kept schema-accurate though, since that's
+     exactly the shape _audio_uri()'s path depends on. -->
 <ern:NewReleaseMessage xmlns:ern="http://ddex.net/xml/ern/43">
   <MessageHeader>
     <MessageId>MSG001</MessageId>
@@ -37,15 +40,15 @@
         <ResourceId>
           <ISRC>GBABC2601234</ISRC>
         </ResourceId>
+        <TechnicalDetails>
+          <DeliveryFile>
+            <File>
+              <URI>resources/opening-track.wav</URI>
+            </File>
+          </DeliveryFile>
+        </TechnicalDetails>
       </SoundRecordingEdition>
       <Duration>PT3M30S</Duration>
-      <TechnicalDetails>
-        <DeliveryFile>
-          <File>
-            <URI>resources/opening-track.wav</URI>
-          </File>
-        </DeliveryFile>
-      </TechnicalDetails>
     </SoundRecording>
     <SoundRecording>
       <ResourceReference>A2</ResourceReference>

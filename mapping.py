@@ -156,11 +156,17 @@ def _sender_dpid(doc) -> str | None:
 
 
 def _audio_uri(sr) -> str | None:
-    """The delivered audio file's own File/URI for this SoundRecording -
-    DeliveryFile is maxOccurs="unbounded" (multiple bitrate variants are
-    allowed), but like release_el/Release elsewhere in this module, only
-    the first one found is mapped."""
-    return _text(sr.find("TechnicalDetails/DeliveryFile/File/URI"))
+    """The delivered audio file's own File/URI for this SoundRecording.
+
+    TechnicalDetails/DeliveryFile only exists nested inside
+    SoundRecordingEdition per the XSD - SoundRecording itself has no
+    TechnicalDetails child. Both SoundRecordingEdition and DeliveryFile are
+    maxOccurs="unbounded" (multiple editions/bitrate variants are allowed),
+    but like release_el/Release elsewhere in this module, only the first
+    one found is mapped."""
+    return _text(
+        sr.find("SoundRecordingEdition/TechnicalDetails/DeliveryFile/File/URI")
+    )
 
 
 def _cover_art_uri(doc, release_el) -> str | None:
