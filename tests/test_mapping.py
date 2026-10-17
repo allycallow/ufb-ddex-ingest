@@ -3,6 +3,7 @@ import os
 import pytest
 
 from mapping import (
+    MappedArtist,
     MappingError,
     _duration_seconds,
     is_new_release_message,
@@ -22,7 +23,7 @@ def test_maps_release_level_fields():
     release = map_release(fixture("mapping-ern43.xml"))
 
     assert release.title == "Test Album"
-    assert release.artists == ["DJ Test"]
+    assert release.artists == [MappedArtist(name="DJ Test", isni="0000000121033088")]
     assert release.label == "Labelwok Records"
     assert release.genre == "House"
     assert release.release_date == "2026-10-15"
@@ -40,14 +41,17 @@ def test_maps_tracks_in_document_order_with_isrc_and_duration():
 
     first, second = release.tracks
     assert first.title == "Opening Track"
-    assert first.artists == ["DJ Test"]
+    assert first.artists == [MappedArtist(name="DJ Test", isni="0000000121033088")]
     assert first.isrc == "GBABC2601234"
     assert first.duration_seconds == 210
     assert first.track_number == 1
     assert first.audio_uri == "resources/opening-track.wav"
 
     assert second.title == "Closing Track"
-    assert second.artists == ["DJ Test", "Guest Vocalist"]
+    assert second.artists == [
+        MappedArtist(name="DJ Test", isni="0000000121033088"),
+        MappedArtist(name="Guest Vocalist", isni=None),
+    ]
     assert second.isrc == "GBABC2601235"
     assert second.duration_seconds == 240
     assert second.track_number == 2

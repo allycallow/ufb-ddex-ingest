@@ -7,7 +7,8 @@ differ enough to need their own pass, and XSD validation/checksum
 verification already cover both versions structurally without needing this.
 Only maps fields that have a direct home in Django's models: release
 title/artists/label/genre/release_date/catalog_number, and per-track
-title/artists/isrc/duration.
+title/artists/isrc/duration. Each artist carries its PartyList-resolved
+name and (optional) ISNI, not just a display string - see MappedArtist.
 
 Deliberately NOT covered, because nothing in the Django schema models them
 (or it would need a design decision beyond "map the field that exists"):
@@ -32,9 +33,18 @@ ERN_43_NAMESPACE = "http://ddex.net/xml/ern/43"
 
 
 @dataclass
+class MappedArtist:
+    name: str
+    # ISO 27729 International Standard Name Identifier - disambiguates
+    # artists who share a name, the way a label's DPID disambiguates
+    # organizations. None when PartyList gave no ISNI for this artist.
+    isni: str | None = None
+
+
+@dataclass
 class MappedTrack:
     title: str
-    artists: list[str]
+    artists: list[MappedArtist]
     isrc: str | None
     duration_seconds: int | None
     track_number: int
@@ -59,7 +69,7 @@ class MappedPurge:
 @dataclass
 class MappedRelease:
     title: str
-    artists: list[str]
+    artists: list[MappedArtist]
     label: str | None
     genre: str | None
     release_date: str | None
@@ -114,8 +124,30 @@ def _text(el) -> str | None:
     return text or None
 
 
-def _artists(el) -> list[str]:
-    return [name for n in el.findall("DisplayArtistName") if (name := _text(n))]
+def _artists(
+    el, party_names: dict[str, str], party_isnis: dict[str, str]
+) -> list[MappedArtist]:
+    """Resolves each DisplayArtist's ArtistPartyReference against PartyList,
+    rather than parsing DisplayArtistName - DisplayArtistName is a single
+    display-credit string (e.g. "Blair, Because of Art" for a collab, one
+    string for the whole release), not one name per artist, so splitting it
+    on commas would be guessing at formatting and would merge distinct
+    artists under one Artist row. DisplayArtist/ArtistPartyReference is the
+    actual structured per-artist identity DDEX provides, resolved the same
+    way _party_dpids() already resolves a label's identity below.
+
+    An ArtistPartyReference that doesn't resolve to a PartyList entry with a
+    name is skipped - schema-valid XML can't produce this (ArtistPartyReference
+    is an IDREF), but defensive here costs nothing.
+    """
+    artists = []
+    for da in el.findall("DisplayArtist"):
+        ref = _text(da.find("ArtistPartyReference"))
+        name = party_names.get(ref) if ref else None
+        if not name:
+            continue
+        artists.append(MappedArtist(name=name, isni=party_isnis.get(ref)))
+    return artists
 
 
 def _party_names(doc) -> dict[str, str]:
@@ -146,6 +178,20 @@ def _party_dpids(doc) -> dict[str, str]:
         if ref and dpid:
             dpids[ref] = dpid
     return dpids
+
+
+def _party_isnis(doc) -> dict[str, str]:
+    """Maps each Party's PartyReference to its ISNI, when it has one - see
+    MappedArtist.isni. Mirrors _party_dpids() exactly; ISNI and DPID are
+    both optional children of the same DetailedPartyId composite, so a
+    Party can carry either, both, or neither."""
+    isnis = {}
+    for party in doc.findall(".//PartyList/Party"):
+        ref = _text(party.find("PartyReference"))
+        isni = _text(party.find("PartyId/ISNI"))
+        if ref and isni:
+            isnis[ref] = isni
+    return isnis
 
 
 def _sender_dpid(doc) -> str | None:
@@ -236,6 +282,7 @@ def map_release(manifest_path: str) -> MappedRelease:
     doc = etree.parse(manifest_path)
     party_names = _party_names(doc)
     party_dpids = _party_dpids(doc)
+    party_isnis = _party_isnis(doc)
 
     release_el = doc.find(".//ReleaseList/Release")
     if release_el is None:
@@ -261,7 +308,7 @@ def map_release(manifest_path: str) -> MappedRelease:
         tracks.append(
             MappedTrack(
                 title=track_title,
-                artists=_artists(sr),
+                artists=_artists(sr, party_names, party_isnis),
                 isrc=_text(sr.find("SoundRecordingEdition/ResourceId/ISRC")),
                 duration_seconds=_duration_seconds(_text(sr.find("Duration"))),
                 track_number=i,
@@ -271,7 +318,7 @@ def map_release(manifest_path: str) -> MappedRelease:
 
     return MappedRelease(
         title=title,
-        artists=_artists(release_el),
+        artists=_artists(release_el, party_names, party_isnis),
         label=label,
         genre=_text(release_el.find("Genre/GenreText")),
         release_date=_text(release_el.find("ReleaseDate")),

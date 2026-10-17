@@ -30,12 +30,30 @@
         <DPID>PADPIDA2026101599Z</DPID>
       </PartyId>
     </Party>
+    <Party>
+      <PartyReference>P2</PartyReference>
+      <PartyName>
+        <FullName>DJ Test</FullName>
+      </PartyName>
+      <PartyId>
+        <ISNI>0000000121033088</ISNI>
+      </PartyId>
+    </Party>
+    <Party>
+      <PartyReference>P3</PartyReference>
+      <PartyName>
+        <FullName>Guest Vocalist</FullName>
+      </PartyName>
+    </Party>
   </PartyList>
   <ResourceList>
     <SoundRecording>
       <ResourceReference>A1</ResourceReference>
       <DisplayTitleText>Opening Track</DisplayTitleText>
       <DisplayArtistName>DJ Test</DisplayArtistName>
+      <DisplayArtist>
+        <ArtistPartyReference>P2</ArtistPartyReference>
+      </DisplayArtist>
       <SoundRecordingEdition>
         <ResourceId>
           <ISRC>GBABC2601234</ISRC>
@@ -53,8 +71,13 @@
     <SoundRecording>
       <ResourceReference>A2</ResourceReference>
       <DisplayTitleText>Closing Track</DisplayTitleText>
-      <DisplayArtistName>DJ Test</DisplayArtistName>
-      <DisplayArtistName>Guest Vocalist</DisplayArtistName>
+      <DisplayArtistName>DJ Test, Guest Vocalist</DisplayArtistName>
+      <DisplayArtist>
+        <ArtistPartyReference>P2</ArtistPartyReference>
+      </DisplayArtist>
+      <DisplayArtist>
+        <ArtistPartyReference>P3</ArtistPartyReference>
+      </DisplayArtist>
       <SoundRecordingEdition>
         <ResourceId>
           <ISRC>GBABC2601235</ISRC>
@@ -80,6 +103,9 @@
       </ReleaseId>
       <DisplayTitleText>Test Album</DisplayTitleText>
       <DisplayArtistName>DJ Test</DisplayArtistName>
+      <DisplayArtist>
+        <ArtistPartyReference>P2</ArtistPartyReference>
+      </DisplayArtist>
       <ReleaseLabelReference>P1</ReleaseLabelReference>
       <Genre>
         <GenreText>House</GenreText>
