@@ -7,6 +7,7 @@ from checksum import (
     ChecksumVerificationError,
     _hash_bytes,
     _resource_refs,
+    referenced_resource_keys,
     resolve_resource_key,
     verify_resources,
 )
@@ -59,6 +60,22 @@ def test_hash_bytes_matches_known_values(algorithm, expected):
 def test_hash_bytes_rejects_unsupported_algorithm():
     with pytest.raises(ChecksumVerificationError, match="Unsupported hash algorithm"):
         _hash_bytes(CONTENT, "MD2")
+
+
+def test_referenced_resource_keys_resolves_against_the_manifest_directory():
+    keys = referenced_resource_keys(
+        fixture("checksum-ern382.xml"), "partners/labelwok/manifest.xml"
+    )
+
+    assert keys == ["partners/labelwok/resources/track.wav"]
+
+
+def test_referenced_resource_keys_is_empty_for_a_malformed_manifest():
+    keys = referenced_resource_keys(
+        fixture("malformed.xml"), "partners/labelwok/manifest.xml"
+    )
+
+    assert keys == []
 
 
 def test_verify_resources_succeeds_when_hash_matches():

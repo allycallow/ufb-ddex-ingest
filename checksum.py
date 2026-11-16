@@ -126,6 +126,24 @@ def resolve_resource_key(manifest_key: str, relative_path: str) -> str:
     return posixpath.normpath(posixpath.join(manifest_dir, relative_path))
 
 
+def referenced_resource_keys(manifest_path: str, manifest_key: str) -> list[str]:
+    """Best-effort S3 keys of every in-bucket resource the manifest
+    references, without verifying anything. Used to tag the resources of a
+    delivery that gets rejected, where verify_resources never returns its
+    list. Returns [] if the manifest can't be parsed - a malformed
+    manifest names no resources we can trust.
+    """
+    try:
+        refs = _resource_refs(etree.parse(manifest_path))
+    except etree.XMLSyntaxError:
+        return []
+    return [
+        resolve_resource_key(manifest_key, path)
+        for path, _, _ in refs
+        if "://" not in path
+    ]
+
+
 def verify_resources(
     manifest_path: str, s3_bucket: str, manifest_key: str, *, fetch=_default_fetch
 ) -> list[str]:
