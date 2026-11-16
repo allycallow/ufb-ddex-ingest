@@ -4,7 +4,12 @@ import pytest
 
 import task
 from mapping import MappingError
-from task import _stage_cover_art, _with_resource_locations, map_delivery_if_possible
+from task import (
+    _stage_cover_art,
+    _tag_processed,
+    _with_resource_locations,
+    map_delivery_if_possible,
+)
 
 FIXTURES = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fixtures")
 
@@ -189,6 +194,57 @@ class _FakeS3:
 
     def put_object(self, **kwargs):
         self.put_calls.append(kwargs)
+
+
+class _FakeTaggingS3:
+    def __init__(self, *, existing_tags=None, fail_on=None):
+        self._existing_tags = existing_tags or {}
+        self._fail_on = fail_on
+        self.put_calls = []
+
+    def get_object_tagging(self, Bucket, Key):
+        if Key == self._fail_on:
+            raise Exception("AccessDenied")
+        return {"TagSet": self._existing_tags.get(Key, [])}
+
+    def put_object_tagging(self, **kwargs):
+        self.put_calls.append(kwargs)
+
+
+def test_tag_processed_tags_every_key():
+    fake_s3 = _FakeTaggingS3()
+
+    _tag_processed(
+        "delivery-bucket", ["a/manifest.xml", "a/track.wav"], s3_client=fake_s3
+    )
+
+    assert [c["Key"] for c in fake_s3.put_calls] == ["a/manifest.xml", "a/track.wav"]
+    for call in fake_s3.put_calls:
+        assert call["Bucket"] == "delivery-bucket"
+        assert call["Tagging"] == {
+            "TagSet": [{"Key": "ddex-processed", "Value": "true"}]
+        }
+
+
+def test_tag_processed_keeps_existing_tags():
+    fake_s3 = _FakeTaggingS3(
+        existing_tags={"a/track.wav": [{"Key": "team", "Value": "x"}]}
+    )
+
+    _tag_processed("delivery-bucket", ["a/track.wav"], s3_client=fake_s3)
+
+    assert fake_s3.put_calls[0]["Tagging"]["TagSet"] == [
+        {"Key": "team", "Value": "x"},
+        {"Key": "ddex-processed", "Value": "true"},
+    ]
+
+
+def test_tag_processed_keeps_going_when_one_key_fails():
+    fake_s3 = _FakeTaggingS3(fail_on="a/track.wav")
+
+    _tag_processed("delivery-bucket", ["a/track.wav", "a/cover.jpg"], s3_client=fake_s3)
+
+    assert [c["Key"] for c in fake_s3.put_calls] == ["a/cover.jpg"]
 
 
 class _FakeBody:

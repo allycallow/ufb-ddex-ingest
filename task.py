@@ -47,6 +47,9 @@ KAFKA_DDEX_DELIVERY_EVENTS_TOPIC = os.environ.get(
     "KAFKA_DDEX_DELIVERY_EVENTS_TOPIC", "ufb.ddex_delivery_events"
 )
 
+PROCESSED_TAG_KEY = "ddex-processed"
+PROCESSED_TAG_VALUE = "true"
+
 _kafka_producer = None
 
 
@@ -216,6 +219,29 @@ def _stage_cover_art(
     return staging_key
 
 
+def _tag_processed(bucket: str, keys: list[str], *, s3_client=None) -> None:
+    """Tags each delivery object ddex-processed=true so the bucket's
+    archive-processed-deliveries lifecycle rule (ufb-iac's
+    modules/ddex-delivery) picks it up.
+
+    PutObjectTagging replaces an object's whole tag set, so existing tags
+    are read first and kept. A failure on one object is logged and sent to
+    Sentry, not raised: the delivery itself is already validated and
+    verified, and an untagged object just falls back to the stale-delivery
+    expiry instead of being archived.
+    """
+    s3 = s3_client or boto3.client("s3")
+    for key in keys:
+        try:
+            existing = s3.get_object_tagging(Bucket=bucket, Key=key)["TagSet"]
+            tags = [t for t in existing if t["Key"] != PROCESSED_TAG_KEY]
+            tags.append({"Key": PROCESSED_TAG_KEY, "Value": PROCESSED_TAG_VALUE})
+            s3.put_object_tagging(Bucket=bucket, Key=key, Tagging={"TagSet": tags})
+        except Exception as exc:
+            logger.exception("Failed to tag s3://%s/%s as processed", bucket, key)
+            sentry_sdk.capture_exception(exc)
+
+
 def _with_resource_locations(
     mapped_delivery: dict,
     s3_bucket: str,
@@ -298,6 +324,8 @@ def main():
         emit_progress_event(s3_key, "failed", error=str(exc))
         emit_saga_result(s3_key, "failed", error=str(exc))
         raise
+
+    _tag_processed(s3_bucket, [s3_key, *verified_resources])
 
     if mapped_delivery is None:
         emit_progress_event(s3_key, "delivery_mapping_skipped")
