@@ -226,6 +226,30 @@ def test_tag_processed_tags_every_key():
         }
 
 
+def test_tag_processed_false_tags_a_rejected_delivery():
+    fake_s3 = _FakeTaggingS3()
+
+    _tag_processed(
+        "delivery-bucket", ["a/manifest.xml"], processed=False, s3_client=fake_s3
+    )
+
+    assert fake_s3.put_calls[0]["Tagging"] == {
+        "TagSet": [{"Key": "ddex-processed", "Value": "false"}]
+    }
+
+
+def test_tag_processed_overwrites_a_previous_value():
+    fake_s3 = _FakeTaggingS3(
+        existing_tags={"a/manifest.xml": [{"Key": "ddex-processed", "Value": "false"}]}
+    )
+
+    _tag_processed("delivery-bucket", ["a/manifest.xml"], s3_client=fake_s3)
+
+    assert fake_s3.put_calls[0]["Tagging"]["TagSet"] == [
+        {"Key": "ddex-processed", "Value": "true"}
+    ]
+
+
 def test_tag_processed_keeps_existing_tags():
     fake_s3 = _FakeTaggingS3(
         existing_tags={"a/track.wav": [{"Key": "team", "Value": "x"}]}

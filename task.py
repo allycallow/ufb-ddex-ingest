@@ -10,7 +10,12 @@ import boto3
 import sentry_sdk
 from confluent_kafka import Producer
 
-from checksum import ChecksumVerificationError, resolve_resource_key, verify_resources
+from checksum import (
+    ChecksumVerificationError,
+    referenced_resource_keys,
+    resolve_resource_key,
+    verify_resources,
+)
 from mapping import (
     ERN_43_NAMESPACE,
     MappingError,
@@ -48,7 +53,6 @@ KAFKA_DDEX_DELIVERY_EVENTS_TOPIC = os.environ.get(
 )
 
 PROCESSED_TAG_KEY = "ddex-processed"
-PROCESSED_TAG_VALUE = "true"
 
 _kafka_producer = None
 
@@ -219,26 +223,30 @@ def _stage_cover_art(
     return staging_key
 
 
-def _tag_processed(bucket: str, keys: list[str], *, s3_client=None) -> None:
-    """Tags each delivery object ddex-processed=true so the bucket's
-    archive-processed-deliveries lifecycle rule (ufb-iac's
-    modules/ddex-delivery) picks it up.
+def _tag_processed(
+    bucket: str, keys: list[str], processed: bool = True, *, s3_client=None
+) -> None:
+    """Tags each delivery object ddex-processed=true (archived to Deep
+    Archive and kept) or, for a rejected delivery, ddex-processed=false
+    (expired after the stale-delivery retention window) - see the lifecycle
+    rules in ufb-iac's modules/ddex-delivery.
 
     PutObjectTagging replaces an object's whole tag set, so existing tags
     are read first and kept. A failure on one object is logged and sent to
-    Sentry, not raised: the delivery itself is already validated and
-    verified, and an untagged object just falls back to the stale-delivery
-    expiry instead of being archived.
+    Sentry, not raised: the delivery's outcome is already decided, and an
+    untagged object simply stays in Standard storage until someone deals
+    with it.
     """
+    value = "true" if processed else "false"
     s3 = s3_client or boto3.client("s3")
     for key in keys:
         try:
             existing = s3.get_object_tagging(Bucket=bucket, Key=key)["TagSet"]
             tags = [t for t in existing if t["Key"] != PROCESSED_TAG_KEY]
-            tags.append({"Key": PROCESSED_TAG_KEY, "Value": PROCESSED_TAG_VALUE})
+            tags.append({"Key": PROCESSED_TAG_KEY, "Value": value})
             s3.put_object_tagging(Bucket=bucket, Key=key, Tagging={"TagSet": tags})
         except Exception as exc:
-            logger.exception("Failed to tag s3://%s/%s as processed", bucket, key)
+            logger.exception("Failed to tag s3://%s/%s (%s)", bucket, key, value)
             sentry_sdk.capture_exception(exc)
 
 
@@ -288,9 +296,14 @@ def main():
     logger.info("Validating manifest s3://%s/%s", s3_bucket, s3_key)
     emit_progress_event(s3_key, "started", s3_bucket=s3_bucket)
 
+    # Collected up front because the temp manifest is gone by the time a
+    # rejection is handled, and a rejected delivery's resources need tagging.
+    referenced_keys: list[str] = []
+
     try:
         with tempfile.NamedTemporaryFile(suffix=".xml") as tmp:
             boto3.client("s3").download_file(s3_bucket, s3_key, tmp.name)
+            referenced_keys = referenced_resource_keys(tmp.name, s3_key)
             ern_namespace = validate_manifest(tmp.name)
 
             logger.info("Manifest validated successfully (%s)", ern_namespace)
@@ -318,6 +331,9 @@ def main():
         logger.error("Delivery rejected: %s", exc)
         emit_progress_event(s3_key, "rejected", reason=str(exc))
         emit_saga_result(s3_key, "failed", error=str(exc))
+        # Only a rejection is tagged: any other failure may be transient and
+        # the delivery retried, so it's left alone.
+        _tag_processed(s3_bucket, [s3_key, *referenced_keys], processed=False)
         raise
     except Exception as exc:
         sentry_sdk.capture_exception(exc)
